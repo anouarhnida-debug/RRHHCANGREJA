@@ -59,13 +59,6 @@ export function HomeScreen() {
         <ShiftCard elapsedMinutes={elapsedMinutes} shift={todayShift} showProgress />
       </View>
 
-      <View style={styles.infoCard}>
-        <Text style={styles.infoTitle}>Registro en terminal del local</Text>
-        <Text style={styles.infoText}>
-          El fichaje de entrada y salida se hace desde el dispositivo fijo del establecimiento.
-        </Text>
-      </View>
-
       <View style={styles.grid}>
         <StatTile label="Horas esta semana" value={formatDurationMinutes(weeklyMinutes)} />
         <StatTile label="Días completados" value={String(weeklyDaysCompleted)} />
@@ -125,24 +118,6 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 18,
     fontWeight: '600',
-  },
-  infoCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: theme.radius.card,
-    borderWidth: 1,
-    gap: 6,
-    padding: 16,
-  },
-  infoTitle: {
-    color: colors.textPrimary,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  infoText: {
-    color: colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20,
   },
   grid: {
     flexDirection: 'row',

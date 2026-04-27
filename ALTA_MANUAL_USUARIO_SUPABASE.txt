@@ -1,0 +1,158 @@
+ALTA MANUAL DE USUARIO EN SUPABASE
+
+OBJETIVO
+Dar de alta un trabajador de forma manual, sin Edge Function todavia.
+El resultado final debe ser:
+- el correo existe en allowed_emails
+- el usuario existe en Supabase Auth
+- la ficha existe en employees
+- employees.profile_id apunta al id real del usuario en Auth
+
+ARQUITECTURA QUE SE RESPETA
+- allowed_emails = whitelist administrativa
+- Supabase Auth = email + contrasena
+- employees = ficha RRHH
+- la app cliente solo hace login
+- el usuario real NO se crea desde la app
+
+TABLAS Y CAMPOS IMPORTANTES EN TU CASO
+1. public.allowed_emails
+- email
+- role
+- used
+- auth_user_id
+
+2. public.employees
+- profile_id
+- work_email
+- first_name
+- last_name
+- role
+- is_authorized
+
+3. Supabase Auth
+- aqui viven el email y la contrasena reales
+
+FLUJO MANUAL COMPLETO
+
+PASO 1. METER EL CORREO EN allowed_emails
+Ve a Supabase -> SQL Editor y ejecuta:
+
+insert into public.allowed_emails (email, role)
+values ('empleado@empresa.com', 'employee');
+
+Si el correo ya existe, no lo vuelvas a insertar.
+
+PASO 2. CREAR EL USUARIO REAL EN AUTH
+Ve a:
+- Supabase Dashboard
+- Authentication
+- Users
+- Add user
+
+Rellena:
+- Email: empleado@empresa.com
+- Password: la contrasena que quieras darle
+- Email confirmed: activado si quieres que pueda entrar sin confirmacion por email
+
+Al guardar, Supabase creara el usuario real en auth.users.
+
+PASO 3. COPIAR EL ID DEL USUARIO CREADO
+En Authentication -> Users busca el usuario recien creado y copia su UUID.
+
+Ejemplo:
+- 9d2c7a8b-1111-2222-3333-444455556666
+
+Ese UUID es el id real del usuario autenticado.
+
+PASO 4. ENLAZAR allowed_emails CON EL USUARIO REAL
+Ve otra vez a SQL Editor y ejecuta:
+
+update public.allowed_emails
+set auth_user_id = '9d2c7a8b-1111-2222-3333-444455556666',
+    used = true
+where email = 'empleado@empresa.com';
+
+Con esto dejas marcado que:
+- ese correo ya fue usado
+- ya esta enlazado con un usuario real de Auth
+
+PASO 5. CREAR LA FICHA EN employees
+Ahora crea la ficha RRHH en employees usando el mismo UUID en profile_id:
+
+insert into public.employees (
+  profile_id,
+  work_email,
+  first_name,
+  last_name,
+  role,
+  is_authorized
+)
+values (
+  '9d2c7a8b-1111-2222-3333-444455556666',
+  'empleado@empresa.com',
+  'Nombre',
+  'Apellido',
+  'employee',
+  true
+);
+
+IMPORTANTE
+- employees.profile_id debe ser el mismo id del usuario en Auth
+- employees.work_email debe coincidir con el email del usuario autenticado
+
+PASO 6. PROBAR EL LOGIN EN LA APP
+Ahora el trabajador ya deberia poder:
+- abrir la app
+- escribir correo + contrasena
+- hacer login con Supabase Auth
+- cargar su ficha desde employees
+
+COMPROBACION RAPIDA
+Puedes revisar si todo esta bien con estas consultas:
+
+1. allowed_emails
+select * from public.allowed_emails
+where email = 'empleado@empresa.com';
+
+2. employees
+select * from public.employees
+where work_email = 'empleado@empresa.com';
+
+LO QUE TIENE QUE COINCIDIR
+- allowed_emails.email = employees.work_email
+- allowed_emails.auth_user_id = employees.profile_id
+- ambos deben apuntar al mismo usuario real de Auth
+
+ERRORES TIPICOS
+
+1. El usuario existe en Auth pero no entra en la app
+Posible causa:
+- no existe su fila en employees
+- o profile_id no coincide con el UUID real de Auth
+
+2. El usuario existe en employees pero el login falla
+Posible causa:
+- email o contrasena incorrectos en Auth
+- el usuario no fue creado realmente en Authentication -> Users
+
+3. El usuario entra en Auth pero luego la app no encuentra su perfil
+Posible causa:
+- work_email no coincide
+- profile_id no coincide
+
+ORDEN CORRECTO
+1. Insertar en allowed_emails
+2. Crear usuario en Auth
+3. Actualizar allowed_emails con auth_user_id y used = true
+4. Insertar fila en employees con profile_id
+5. Probar login en la app
+
+CUANDO PASES A EDGE FUNCTION
+La Edge Function hara automaticamente estos pasos:
+- validar que el correo este en allowed_emails
+- crear el usuario en Auth
+- actualizar allowed_emails
+- crear la fila en employees
+
+Pero de momento, para pruebas manuales, este documento es suficiente.

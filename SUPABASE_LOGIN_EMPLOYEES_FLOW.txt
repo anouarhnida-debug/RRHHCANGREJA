@@ -1,0 +1,120 @@
+SUPABASE LOGIN + EMPLOYEES FLOW
+
+OBJETIVO
+La app ya no guarda contrasenas en local ni registra usuarios desde el cliente.
+El usuario escribe correo y contrasena, Supabase Auth valida las credenciales y,
+si el login es correcto, la app carga la ficha del trabajador desde la tabla employees.
+
+ARQUITECTURA
+1. Supabase Auth
+- Guarda email y password.
+- La app cliente solo hace signInWithPassword.
+- No hay registro publico desde la app.
+
+2. allowed_emails
+- Es la lista blanca previa.
+- El administrador mete aqui los correos autorizados.
+- Un backend seguro o Edge Function crea el usuario real en auth.users.
+- Ese backend debe enlazar allowed_emails.auth_user_id con el usuario creado.
+
+3. employees
+- Guarda la ficha laboral del trabajador.
+- Debe quedar vinculada con Supabase Auth por auth_user_id.
+- La app lee employees despues del login para saber quien es el empleado que acaba de entrar.
+
+FLUJO REAL DE LA APP
+1. El usuario abre la pantalla de login.
+2. Introduce correo y contrasena.
+3. El cliente llama a supabase.auth.signInWithPassword({ email, password }).
+4. Si Supabase Auth responde OK, ya existe una sesion valida en el dispositivo.
+5. La app usa auth.user.id para buscar la fila del empleado en public.employees.
+6. Si encuentra la fila, la transforma al UserProfile que usan las pantallas.
+7. El usuario entra a la app con su perfil cargado.
+
+SI EL LOGIN EXISTE PERO NO HAY FILA EN EMPLOYEES
+La app corta el acceso.
+Motivo: la autenticacion existe, pero la ficha laboral no esta preparada.
+Eso evita dejar entrar a usuarios autenticados que no esten completos en la capa de RRHH.
+
+ARCHIVOS NUEVOS O CAMBIADOS
+1. src/lib/supabase.ts
+- Crea el cliente de Supabase para React Native.
+- Usa EXPO_PUBLIC_SUPABASE_URL y EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY.
+- Persiste la sesion con AsyncStorage.
+
+2. src/lib/employeeProfile.ts
+- Convierte una fila de employees al UserProfile interno de la app.
+- Soporta varias convenciones de columnas para no romper pantallas actuales.
+
+3. src/context/AppDataContext.tsx
+- Elimina la autenticacion local antigua.
+- El login pasa a usar Supabase Auth.
+- Despues del login, carga employees y deja profile en memoria.
+- clearSession hace signOut real en Supabase.
+
+4. src/screens/SessionScreen.tsx
+- Se elimina el modo de registro.
+- La pantalla queda solo para iniciar sesion.
+
+5. src/hooks/useProfile.ts
+- Ya no expone registerAccount porque no hay signup publico.
+
+ESQUEMA RECOMENDADO PARA EMPLOYEES
+La app actual espera poder construir estos datos:
+- auth_user_id
+- email
+- first_name o name
+- last_name o surname
+- employee_id o employee_code
+- role
+- department
+- shift_type
+- phone
+
+EJEMPLO SQL ORIENTATIVO
+create table public.employees (
+  id uuid primary key default gen_random_uuid(),
+  auth_user_id uuid unique not null references auth.users(id) on delete cascade,
+  email text not null unique,
+  first_name text not null,
+  last_name text not null,
+  employee_id text not null unique,
+  role text not null check (role in ('admin', 'manager', 'employee')),
+  department text,
+  shift_type text,
+  phone text,
+  created_at timestamptz not null default now()
+);
+
+RLS RECOMENDADA PARA EMPLOYEES
+La idea correcta es que cada usuario autenticado solo pueda leer su propia fila.
+Ejemplo orientativo:
+
+alter table public.employees enable row level security;
+
+create policy "employees can read own profile"
+on public.employees
+for select
+to authenticated
+using (auth.uid() = auth_user_id);
+
+VARIABLES DE ENTORNO
+Crear un archivo .env con:
+- EXPO_PUBLIC_SUPABASE_URL
+- EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+
+NO poner nunca la service role en la app.
+
+ALTA SEGURA DE NUEVOS USUARIOS
+1. Admin anade email a allowed_emails.
+2. Backend seguro o Edge Function crea el usuario en auth.users.
+3. Ese backend actualiza:
+- allowed_emails.auth_user_id
+- allowed_emails.used = true
+4. Ese mismo proceso debe crear o completar la fila en employees.
+5. Desde ese momento el trabajador ya puede hacer login desde la app.
+
+RESUMEN
+Correo + contrasena sirven solo para autenticar en Supabase Auth.
+La tabla employees sirve para cargar la identidad laboral del usuario autenticado.
+La tabla allowed_emails sirve como lista blanca previa y control administrativo.
